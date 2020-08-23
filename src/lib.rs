@@ -19,6 +19,9 @@ use thiserror::Error;
 
 // ============================================ Types =========================================== \\
 
+#[derive(Eq, PartialEq, Clone, Debug)]
+pub struct NodeId(PublicKey);
+
 #[repr(u16)]
 #[derive(Eq, PartialEq, IntoPrimitive, TryFromPrimitive, Copy, Clone, Debug)]
 pub enum PacketId {
@@ -73,7 +76,7 @@ pub struct Heartbeat;
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
 pub struct Hello {
-    id: PublicKey,
+    id: NodeId,
     root: Root,
 }
 
@@ -227,14 +230,14 @@ impl Heartbeat {
 impl Hello {
     // ==================================== Constructors ==================================== \\
 
-    pub const fn new(id: PublicKey, root: Root) -> Self {
+    pub const fn new(id: NodeId, root: Root) -> Self {
         Hello { id, root }
     }
 
     // ======================================== Read ======================================== \\
 
     #[inline]
-    pub fn id(&self) -> &PublicKey {
+    pub fn id(&self) -> &NodeId {
         &self.id
     }
 
@@ -269,12 +272,12 @@ impl Root {
         &self.sig
     }
 
-    pub fn verify_for(&self, id: &PublicKey) -> Result<()> {
+    pub fn verify_for(&self, id: &NodeId) -> Result<()> {
         let mut msg = [0; 40];
         msg[0..8].copy_from_slice(&(self.time.timestamp().to_le_bytes()));
         msg[8..40].copy_from_slice(self.hash.as_bytes());
 
-        Ok(id.verify(&msg, &self.sig)?)
+        Ok(id.0.verify(&msg, &self.sig)?)
     }
 }
 
@@ -409,7 +412,7 @@ group! {
     Hello {
         {PacketId::Hello}
         {[u8; 2]}
-        id: PublicKey,
+        id: NodeId,
         root: Root,
     }
 }
@@ -436,7 +439,7 @@ impl Encode for PacketId {
 
 encode_from_slice!((this: DateTime): 0..8 <- &(this.timestamp().to_le_bytes()));
 encode_from_slice!((this: Hash): 0..32 <- this.as_bytes());
-encode_from_slice!((this: PublicKey): 0..32 <- this.as_bytes());
+encode_from_slice!((this: NodeId): 0..32 <- this.0.as_bytes());
 encode_from_slice!((this: Signature): 0..64 <- &this.to_bytes());
 
 impl Encode for sparse::Proof {
@@ -504,11 +507,11 @@ impl Decode for sparse::Proof {
     }
 }
 
-impl Decode for PublicKey {
+impl Decode for NodeId {
     fn decode(buf: &[u8]) -> Result<(Self, usize)> {
         assert_min_size!(buf, 32);
 
-        Ok((PublicKey::from_bytes(&buf[0..32])?, 32))
+        Ok((NodeId(PublicKey::from_bytes(&buf[0..32])?), 32))
     }
 }
 
