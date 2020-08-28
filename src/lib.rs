@@ -17,6 +17,20 @@ use sparse::Hash;
 #[cfg(feature = "thiserror")]
 use thiserror::Error;
 
+// ========================================= Interfaces ========================================= \\
+
+pub trait Packet {
+    const PACKET_ID: PacketId;
+}
+
+pub trait Encode {
+    fn encode(&self, buf: &mut [u8]) -> Result<usize>;
+}
+
+pub trait Decode: Sized {
+    fn decode(buf: &[u8]) -> Result<(Self, usize)>;
+}
+
 // ============================================ Types =========================================== \\
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -190,20 +204,6 @@ pub enum Error {
     InvalidPacketId(u16),
     #[cfg_attr(feature = "thiserror", error("wrong packet id ({0:?})"))]
     WrongPacketId(PacketId),
-}
-
-// ========================================= Interfaces ========================================= \\
-
-pub trait Packet: Encode + Decode {
-    const PACKET_ID: PacketId;
-}
-
-pub trait Encode {
-    fn encode(&self, buf: &mut [u8]) -> Result<usize>;
-}
-
-pub trait Decode: Sized {
-    fn decode(buf: &[u8]) -> Result<(Self, usize)>;
 }
 
 // ========================================== Constants ========================================= \\
