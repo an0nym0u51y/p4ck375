@@ -3,7 +3,7 @@ name = "p4ck375"
 description = ""
 version = "0.0.0"
 homepage = "https://github.com/r3v2d0g/p4ck375"
-repository = "https://github.com/r3v2d0g/p4ck375.git"
+repository = "https://git.r3vd5u3d.network/~r3v2d0g/p4ck375"
 documentation = "https://docs.rs/p4ck375"
 keywords = []
 categories = []
@@ -26,7 +26,7 @@ features = ["std"]
 
 [dependencies.ed25519]
 package = "ed25519-dalek"
-version = "1.0.0"
+version = "1.0"
 
 [dependencies.sparse]
 package = "sp4r53"
