@@ -273,7 +273,9 @@ macro_rules! group {
         ),* $(,)?
     }) => {
         impl Encode for $group {
-            fn encode<'buf>(&self, buf: &'buf mut [u8]) -> ::format::Result<(usize, &'buf mut [u8])> {
+            type Error = Error;
+
+            fn encode<'buf>(&self, buf: &'buf mut [u8]) -> Result<(usize, &'buf mut [u8])> {
                 let mut bytes = 0;
                 $(
                     let (octets, buf) = PacketId::$id.encode(buf)?;
@@ -295,11 +297,13 @@ macro_rules! group {
         }
 
         impl<'buf> Decode<'buf> for $group {
-            fn decode(buf: &'buf [u8]) -> ::format::Result<(Self, &'buf [u8])> {
+            type Error = Error;
+
+            fn decode(buf: &'buf [u8]) -> Result<(Self, &'buf [u8])> {
                 $(
                     let (id, buf) = PacketId::decode(buf)?;
                     if id != PacketId::$id {
-                        return Err(::format::Error::InvalidValue);
+                        return Err(Error::WrongPacketId(id));
                     }
                 )?
 
@@ -352,19 +356,22 @@ group! {
 // ========================================= impl Encode ======================================== \\
 
 impl Encode for PacketId {
-    fn encode<'buf>(&self, buf: &'buf mut [u8]) -> format::Result<(usize, &'buf mut [u8])> {
-        (*self as u16).encode(buf)
+    type Error = Error;
+
+    fn encode<'buf>(&self, buf: &'buf mut [u8]) -> Result<(usize, &'buf mut [u8])> {
+        Ok((*self as u16).encode(buf)?)
     }
 }
 
 // ========================================= impl Decode ======================================== \\
 
 impl<'buf> Decode<'buf> for PacketId {
-    fn decode(buf: &'buf [u8]) -> format::Result<(Self, &'buf [u8])> {
-        let (id, rest) = u16::decode(buf)?;
-        let id = PacketId::try_from(id).map_err(|_| format::Error::InvalidValue)?;
+    type Error = Error;
 
-        Ok((id, rest))
+    fn decode(buf: &'buf [u8]) -> Result<(Self, &'buf [u8])> {
+        let (id, rest) = u16::decode(buf)?;
+
+        Ok((PacketId::try_from(id)?, rest))
     }
 }
 
