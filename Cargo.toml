@@ -28,6 +28,12 @@ features = ["std"]
 package = "ed25519-dalek"
 version = "1.0"
 
+[dependencies.format]
+package = "f0rm47"
+git = "https://git.r3vd5u3d.network/~r3v2d0g/f0rm47"
+branch = "main"
+features = ["chrono", "ed25519", "sparse"]
+
 [dependencies.sparse]
 package = "sp4r53"
 version = "0.1"
