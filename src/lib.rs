@@ -355,6 +355,17 @@ group! {
 
 // ========================================= impl Encode ======================================== \\
 
+impl Encode for Packet {
+    type Error = Error;
+
+    fn encode<'buf>(&self, buf: &'buf mut [u8]) -> Result<(usize, &'buf mut [u8])> {
+        match self {
+            Packet::Heartbeat(packet) => packet.encode(buf),
+            Packet::Hello(packet) => packet.encode(buf),
+        }
+    }
+}
+
 impl Encode for PacketId {
     type Error = Error;
 
@@ -364,6 +375,25 @@ impl Encode for PacketId {
 }
 
 // ========================================= impl Decode ======================================== \\
+
+impl<'buf> Decode<'buf> for Packet {
+    type Error = Error;
+
+    fn decode(buf: &'buf [u8]) -> Result<(Self, &'buf [u8])> {
+        let (id, _) = PacketId::decode(buf)?;
+
+        match id {
+            PacketId::Heartbeat => {
+                let (packet, rest) = Heartbeat::decode(buf)?;
+                Ok((Packet::Heartbeat(packet), rest))
+            }
+            PacketId::Hello => {
+                let (packet, rest) = Hello::decode(buf)?;
+                Ok((Packet::Hello(packet), rest))
+            }
+        }
+    }
+}
 
 impl<'buf> Decode<'buf> for PacketId {
     type Error = Error;
