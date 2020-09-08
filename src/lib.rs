@@ -8,20 +8,33 @@
 
 // =========================================== Imports ========================================== \\
 
+pub use chrono::{self, DateTime, Utc};
+pub use ed25519::{self, PublicKey, Signature};
+pub use sparse::{self, Hash};
+
 use core::convert::TryFrom;
-use ed25519::{PublicKey, Signature, Verifier};
+use ed25519::Verifier;
 use format::{Decode, Encode};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use sparse::Hash;
 
 #[cfg(feature = "thiserror")]
 use thiserror::Error;
+
+// ========================================== Constants ========================================= \\
+
+pub const RAW_OVERHEAD: usize = 2;
+pub const NOISE_OVERHEAD: usize = 16;
+pub const MSG_OVERHEAD: usize = RAW_OVERHEAD + NOISE_OVERHEAD;
+
+pub const RAW_MAX_LEN: usize = NOISE_MAX_LEN - RAW_OVERHEAD;
+pub const NOISE_MAX_LEN: usize = 65535;
+pub const MSG_MAX_LEN: usize = NOISE_MAX_LEN - MSG_OVERHEAD;
 
 // ============================================ Types =========================================== \\
 
 pub enum Packet {
     Heartbeat(Heartbeat),
-    Hello(Hello),
+    Hello(Box<Hello>),
 }
 
 #[repr(u16)]
@@ -143,7 +156,7 @@ pub struct Hello {
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
 pub struct Root {
-    time: DateTime,
+    time: DateTime<Utc>,
     hash: Hash,
     sig: Signature,
 }
@@ -169,8 +182,6 @@ pub struct Routes {
 }
 
 pub type NodeId = PublicKey;
-
-pub type DateTime = chrono::DateTime<chrono::Utc>;
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug)]
@@ -186,14 +197,21 @@ pub enum Error {
     WrongPacketId(PacketId),
 }
 
-// ========================================== Constants ========================================= \\
+// ========================================= impl Packet ======================================== \\
 
-pub const RAW_OVERHEAD: usize = 2;
-pub const NOISE_OVERHEAD: usize = 16;
+impl Packet {
+    // ==================================== Constructors ==================================== \\
 
-pub const RAW_MAX_LEN: usize = NOISE_MAX_LEN - RAW_OVERHEAD;
-pub const NOISE_MAX_LEN: usize = 65535;
-pub const MSG_MAX_LEN: usize = RAW_MAX_LEN - NOISE_OVERHEAD;
+    #[inline]
+    pub const fn heartbeat() -> Self {
+        Packet::Heartbeat(Heartbeat::new())
+    }
+
+    #[inline]
+    pub fn hello(id: NodeId, root: Root) -> Self {
+        Hello::new(id, root).into()
+    }
+}
 
 // ======================================= impl Heartbeat ======================================= \\
 
@@ -236,8 +254,18 @@ impl Hello {
 impl Root {
     // ==================================== Constructors ==================================== \\
 
-    pub const fn new(time: DateTime, hash: Hash, sig: Signature) -> Self {
+    pub const fn new(time: DateTime<Utc>, hash: Hash, sig: Signature) -> Self {
         Root { time, hash, sig }
+    }
+
+    // ======================================= Helpers ====================================== \\
+
+    pub fn prepare(time: &DateTime<Utc>, hash: &Hash) -> Result<[u8; 40]> {
+        let mut msg = [0; 40];
+        let (_, rest) = time.encode(&mut msg)?;
+        hash.encode(rest)?;
+
+        Ok(msg)
     }
 
     // ======================================== Read ======================================== \\
@@ -253,9 +281,7 @@ impl Root {
     }
 
     pub fn verify_for(&self, id: &NodeId) -> Result<()> {
-        let mut msg = [0; 40];
-        let (_, rest) = self.time.encode(&mut msg)?;
-        self.hash.encode(rest)?;
+        let msg = Self::prepare(&self.time, &self.hash)?;
 
         Ok(id.verify(&msg, &self.sig)?)
     }
@@ -341,7 +367,7 @@ group! {
 
 group! {
     Root {
-        time: DateTime,
+        time: DateTime<Utc>,
         hash: Hash,
         sig: Signature,
     }
@@ -386,11 +412,11 @@ impl<'buf> Decode<'buf> for Packet {
             PacketId::Heartbeat => {
                 let (packet, rest) = Heartbeat::decode(buf)?;
                 Ok((Packet::Heartbeat(packet), rest))
-            }
+            },
             PacketId::Hello => {
-                let (packet, rest) = Hello::decode(buf)?;
+                let (packet, rest) = Box::<Hello>::decode(buf)?;
                 Ok((Packet::Hello(packet), rest))
-            }
+            },
         }
     }
 }
@@ -406,6 +432,20 @@ impl<'buf> Decode<'buf> for PacketId {
 }
 
 // ========================================== impl From ========================================= \\
+
+impl From<Heartbeat> for Packet {
+    #[inline]
+    fn from(packet: Heartbeat) -> Self {
+        Packet::Heartbeat(packet)
+    }
+}
+
+impl From<Hello> for Packet {
+    #[inline]
+    fn from(packet: Hello) -> Self {
+        Packet::Hello(packet.into())
+    }
+}
 
 impl From<ed25519::SignatureError> for Error {
     #[inline]
