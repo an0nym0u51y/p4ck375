@@ -296,29 +296,67 @@ impl Packet {
         Connections::new(conns, routes).into()
     }
 
+    // ===================================== Destructors ==================================== \\
+
+    pub fn into_heartbeat(self) -> Option<Heartbeat> {
+        if let Packet::Heartbeat(packet) = self {
+            Some(packet)
+        } else {
+            None
+        }
+    }
+
+    pub fn into_hello(self) -> Option<Hello> {
+        if let Packet::Hello(packet) = self {
+            Some(*packet)
+        } else {
+            None
+        }
+    }
+
+    pub fn into_connections(self) -> Option<Connections> {
+        if let Packet::Connections(packet) = self {
+            Some(*packet)
+        } else {
+            None
+        }
+    }
+
     // ======================================== Read ======================================== \\
 
     pub const fn is_heartbeat(&self) -> bool {
-        if let Packet::Heartbeat(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Packet::Heartbeat(_))
     }
 
     pub const fn is_hello(&self) -> bool {
-        if let Packet::Hello(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Packet::Hello(_))
     }
 
     pub const fn is_connections(&self) -> bool {
-        if let Packet::Connections(_) = self {
-            true
+        matches!(self, Packet::Connections(_))
+    }
+
+    pub const fn as_heartbeat(&self) -> Option<&Heartbeat> {
+        if let Packet::Heartbeat(packet) = self {
+            Some(packet)
         } else {
-            false
+            None
+        }
+    }
+
+    pub const fn as_hello(&self) -> Option<&Hello> {
+        if let Packet::Hello(packet) = self {
+            Some(packet)
+        } else {
+            None
+        }
+    }
+   
+    pub const fn as_connections(&self) -> Option<&Connections> {
+        if let Packet::Connections(packet) = self {
+            Some(packet)
+        } else {
+            None
         }
     }
 }
