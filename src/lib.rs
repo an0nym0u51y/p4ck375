@@ -32,6 +32,7 @@ pub const MSG_MAX_LEN: usize = NOISE_MAX_LEN - MSG_OVERHEAD;
 
 // ============================================ Types =========================================== \\
 
+#[derive(Debug)]
 pub enum Packet {
     Heartbeat(Heartbeat),
     Hello(Box<Hello>),
@@ -211,6 +212,24 @@ impl Packet {
     pub fn hello(id: NodeId, root: Root) -> Self {
         Hello::new(id, root).into()
     }
+
+    // ======================================== Read ======================================== \\
+
+    pub const fn is_heartbeat(&self) -> bool {
+        if let Packet::Heartbeat(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub const fn is_hello(&self) -> bool {
+        if let Packet::Hello(_) = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 // ======================================= impl Heartbeat ======================================= \\
@@ -218,6 +237,7 @@ impl Packet {
 impl Heartbeat {
     // ==================================== Constructors ==================================== \\
 
+    #[inline]
     pub const fn new() -> Self {
         Heartbeat
     }
@@ -228,6 +248,7 @@ impl Heartbeat {
 impl Hello {
     // ==================================== Constructors ==================================== \\
 
+    #[inline]
     pub const fn new(id: NodeId, root: Root) -> Self {
         Hello { id, root }
     }
@@ -235,15 +256,16 @@ impl Hello {
     // ======================================== Read ======================================== \\
 
     #[inline]
-    pub fn id(&self) -> &NodeId {
+    pub const fn id(&self) -> &NodeId {
         &self.id
     }
 
     #[inline]
-    pub fn root(&self) -> &Root {
+    pub const fn root(&self) -> &Root {
         &self.root
     }
 
+    #[inline]
     pub fn verify(&self) -> Result<()> {
         self.root.verify_for(&self.id)
     }
@@ -254,6 +276,7 @@ impl Hello {
 impl Root {
     // ==================================== Constructors ==================================== \\
 
+    #[inline]
     pub const fn new(time: DateTime<Utc>, hash: Hash, sig: Signature) -> Self {
         Root { time, hash, sig }
     }
@@ -271,12 +294,12 @@ impl Root {
     // ======================================== Read ======================================== \\
 
     #[inline]
-    pub fn hash(&self) -> &Hash {
+    pub const fn hash(&self) -> &Hash {
         &self.hash
     }
 
     #[inline]
-    pub fn sig(&self) -> &Signature {
+    pub const fn sig(&self) -> &Signature {
         &self.sig
     }
 
