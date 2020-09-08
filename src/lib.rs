@@ -36,6 +36,7 @@ pub const MSG_MAX_LEN: usize = NOISE_MAX_LEN - MSG_OVERHEAD;
 pub enum Packet {
     Heartbeat(Heartbeat),
     Hello(Box<Hello>),
+    Connections(Box<Connections>),
 }
 
 #[repr(u16)]
@@ -43,6 +44,7 @@ pub enum Packet {
 pub enum PacketId {
     Heartbeat = 0,
     Hello = 1,
+    Connections = 2,
 }
 
 #[derive(Debug)]
@@ -94,6 +96,82 @@ pub struct Heartbeat;
 pub struct Hello {
     id: NodeId,
     root: Root,
+}
+
+#[derive(Debug)]
+/// ## Encoding
+///
+/// ```text
+///  0                   1                   2                   3
+///  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// +         Packet ID (2)         |     Number of Connections     |   4
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |                                                               |   8
+/// +                                                               +
+///
+///                           {Connections}
+///
+/// +                                                               +
+/// |                                                               | ...
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |                                                               | ...
+/// +                                                               +
+///
+///                              {Routes}
+///
+/// +                                                               +
+/// |                                                               | ...
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// ```
+pub struct Connections {
+    conns: Vec<Connection>,
+    routes: Routes,
+}
+
+#[derive(Debug)]
+/// ## Encoding
+///
+/// ```text
+///  0                   1                   2                   3
+///  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |                                                               |   4
+/// +                                                               +
+/// |                                                               |   8
+/// +                                                               +
+/// |                                                               |  12
+/// +                                                               +
+/// |                                                               |  16
+/// +                            Node ID                            +
+/// |                                                               |  20
+/// +                                                               +
+/// |                                                               |  24
+/// +                                                               +
+/// |                                                               |  28
+/// +                                                               +
+/// |                                                               |  32
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |                                                               |  36
+/// +                                                               +
+///
+///                               {Root}
+///
+/// +                                                               +
+/// |                                                               | 126
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |                                                               | 130
+/// +                                                               +
+///
+///                              {Routes}
+///
+/// +                                                               +
+/// |                                                               | ...
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+pub struct Connection {
+    id: NodeId,
+    root: Root,
+    routes: Routes,
 }
 
 #[derive(Debug)]
@@ -213,6 +291,11 @@ impl Packet {
         Hello::new(id, root).into()
     }
 
+    #[inline]
+    pub fn connections(conns: Vec<Connection>, routes: Routes) -> Self {
+        Connections::new(conns, routes).into()
+    }
+
     // ======================================== Read ======================================== \\
 
     pub const fn is_heartbeat(&self) -> bool {
@@ -225,6 +308,14 @@ impl Packet {
 
     pub const fn is_hello(&self) -> bool {
         if let Packet::Hello(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub const fn is_connections(&self) -> bool {
+        if let Packet::Connections(_) = self {
             true
         } else {
             false
@@ -271,6 +362,76 @@ impl Hello {
     }
 }
 
+// ====================================== impl Connections ====================================== \\
+
+impl Connections {
+    // ==================================== Constructors ==================================== \\
+
+    #[inline]
+    pub const fn new(conns: Vec<Connection>, routes: Routes) -> Self {
+        Connections { conns, routes }
+    }
+
+    // ======================================== Read ======================================== \\
+
+    #[inline]
+    pub const fn conns(&self) -> &Vec<Connection> {
+        &self.conns
+    }
+
+    #[inline]
+    pub const fn routes(&self) -> &Routes {
+        &self.routes
+    }
+
+    pub fn verify(&self, root: Hash) -> Result<bool> {
+        if !self.routes.verify(root) {
+            return Ok(false);
+        }
+
+        for conn in &self.conns {
+            if !conn.verify()? {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+}
+
+// ======================================= impl Connection ====================================== \\
+
+impl Connection {
+    // ==================================== Constructors ==================================== \\
+
+    #[inline]
+    pub const fn new(id: NodeId, root: Root, routes: Routes) -> Self {
+        Connection { id, root, routes }
+    }
+
+    // ======================================== Read ======================================== \\
+
+    #[inline]
+    pub const fn id(&self) -> &NodeId {
+        &self.id
+    }
+
+    #[inline]
+    pub const fn root(&self) -> &Root {
+        &self.root
+    }
+
+    #[inline]
+    pub const fn routes(&self) -> &Routes {
+        &self.routes
+    }
+
+    pub fn verify(&self) -> Result<bool> {
+        self.root.verify_for(&self.id)?;
+        Ok(self.routes.verify(self.root.hash))
+    }
+}
+
 // ========================================== impl Root ========================================= \\
 
 impl Root {
@@ -307,6 +468,28 @@ impl Root {
         let msg = Self::prepare(&self.time, &self.hash)?;
 
         Ok(id.verify(&msg, &self.sig)?)
+    }
+}
+
+// ========================================= impl Routes ======================================== \\
+
+impl Routes {
+    // ==================================== Constructors ==================================== \\
+
+    #[inline]
+    pub const fn new(proof: sparse::Proof) -> Self {
+        Routes { proof }
+    }
+
+    // ======================================== Read ======================================== \\
+
+    #[inline]
+    pub const fn proof(&self) -> &sparse::Proof {
+        &self.proof
+    }
+
+    pub fn verify(&self, root: Hash) -> bool {
+        self.proof.verify(root)
     }
 }
 
@@ -389,6 +572,22 @@ group! {
 }
 
 group! {
+    Connections {
+        {PacketId::Connections}
+        conns: Vec<Connection>,
+        routes: Routes,
+    }
+}
+
+group! {
+    Connection {
+        id: NodeId,
+        root: Root,
+        routes: Routes,
+    }
+}
+
+group! {
     Root {
         time: DateTime<Utc>,
         hash: Hash,
@@ -411,6 +610,7 @@ impl Encode for Packet {
         match self {
             Packet::Heartbeat(packet) => packet.encode(buf),
             Packet::Hello(packet) => packet.encode(buf),
+            Packet::Connections(packet) => packet.encode(buf),
         }
     }
 }
@@ -440,6 +640,10 @@ impl<'buf> Decode<'buf> for Packet {
                 let (packet, rest) = Box::<Hello>::decode(buf)?;
                 Ok((Packet::Hello(packet), rest))
             },
+            PacketId::Connections => {
+                let (packet, rest) = Box::<Connections>::decode(buf)?;
+                Ok((Packet::Connections(packet), rest))
+            },
         }
     }
 }
@@ -467,6 +671,13 @@ impl From<Hello> for Packet {
     #[inline]
     fn from(packet: Hello) -> Self {
         Packet::Hello(packet.into())
+    }
+}
+
+impl From<Connections> for Packet {
+    #[inline]
+    fn from(packet: Connections) -> Self {
+        Packet::Connections(packet.into())
     }
 }
 
